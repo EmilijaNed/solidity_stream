@@ -88,7 +88,37 @@ contract StreamingContractV1 is IStreamingContractV1{
     }
 
     function cancelStream(uint256 streamId) external{
-        
+        Stream memory stream = getStream(streamId);
+        require(!stream.cancelled, "Stream already cancelled");
+        require(msg.sender == stream.sender, "Only sender can cancel");
+
+        uint256 withdrawable = calculateWithdrawableAmount(streamId);
+        require(withdrawable > 0, "Nothing to withdraw");
+
+        uint256 amountOwedToRecipient = withdrawable - stream.withdrawnAmount;
+        uint256 amountOwedToSender = stream.totalAmount - withdrawable;
+
+        stream.cancelled = true;
+
+        if (amountOwedToRecipient > 0) {
+            if (stream.tokenAddress == address(0)) {
+                // ETH
+                payable(stream.recipient).transfer(amountOwedToRecipient);
+            } else {
+                IERC20(stream.tokenAddress).transfer(stream.recipient, amountOwedToRecipient);
+            }
+        }
+
+        if (amountOwedToSender > 0) {
+            if (stream.tokenAddress == address(0)) {
+                // ETH
+                payable(stream.sender).transfer(amountOwedToSender);
+            } else {
+                IERC20(stream.tokenAddress).transfer(stream.sender, amountOwedToSender);
+            }
+        }
+
+        emit StreamCancelled(streamId, amountOwedToRecipient, amountOwedToSender);
     }
     // Withdraw available funds from a stream
     //Funkcija dozvoljava recipientu da povuče ETH koji im pripada u ovom trenutku iz streama.
